@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Upload - RAG System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-form {
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        input[type="file"] {
+            padding: 8px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .documents-list {
+            margin-top: 30px;
+        }
+        .document-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .document-title {
+            font-weight: bold;
+            color: #333;
+        }
+        .document-meta {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .chat-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #eee;
+        }
+        .chat-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .chat-input input {
+            flex: 1;
+        }
+        .chat-input button {
+            width: auto;
+            padding: 10px 20px;
+        }
+        .chat-response {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none;
+        }
+        .chat-response.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 PDF Upload & RAG Chat System</h1>
+        
+        <!-- Upload Form -->
+        <div class="upload-form">
+            <h2>Upload PDF Document</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="title">Document Title:</label>
+                    <input type="text" id="title" name="title" required placeholder="Enter document title">
+                </div>
+                <div class="form-group">
+                    <label for="document">PDF File:</label>
+                    <input type="file" id="document" name="document" accept=".pdf" required>
+                </div>
+                <button type="submit" id="uploadBtn">Upload PDF</button>
+            </form>
+            <div id="uploadStatus" class="status"></div>
+        </div>
+
+        <!-- Documents List -->
+        <div class="documents-list">
+            <h2>Uploaded Documents</h2>
+            <button onclick="loadDocuments()">Refresh Documents</button>
+            <div id="documentsList"></div>
+        </div>
+
+        <!-- Chat Section -->
+        <div class="chat-section">
+            <h2>Ask Questions About Your Documents</h2>
+            <div class="chat-input">
+                <input type="text" id="chatInput" placeholder="Ask a question about your uploaded documents...">
+                <button onclick="askQuestion()">Ask</button>
+            </div>
+            <div id="chatResponse" class="chat-response"></div>
+        </div>
+    </div>
+
+    <script>
+        // Upload PDF
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('document', document.getElementById('document').files[0]);
+            
+            const uploadBtn = document.getElementById('uploadBtn');
+            const status = document.getElementById('uploadStatus');
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+            status.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    status.className = 'status success';
+                    status.textContent = `Document uploaded successfully! Chunks: ${result.document.chunkCount}`;
+                    status.style.display = 'block';
+                    
+                    // Clear form
+                    document.getElementById('uploadForm').reset();
+                    
+                    // Refresh documents list
+                    loadDocuments();
+                } else {
+                    status.className = 'status error';
+                    status.textContent = result.message || 'Upload failed';
+                    status.style.display = 'block';
+                }
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = 'Upload failed: ' + error.message;
+                status.style.display = 'block';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload PDF';
+            }
+        });
+
+        // Load documents
+        async function loadDocuments() {
+            try {
+                const response = await fetch('/api/documents');
+                const result = await response.json();
+                
+                const documentsList = document.getElementById('documentsList');
+                
+                if (result.success && result.documents.length > 0) {
+                    documentsList.innerHTML = result.documents.map(doc => `
+                        <div class="document-item">
+                            <div class="document-title">${doc.title}</div>
+                            <div class="document-meta">
+                                File: ${doc.fileName || 'N/A'} | 
+                                Type: ${doc.fileType || 'N/A'} | 
+                                Chunks: ${doc.chunkCount} | 
+                                Uploaded: ${new Date(doc.createdAt).toLocaleDateString()}
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    documentsList.innerHTML = '<p>No documents uploaded yet.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading documents:', error);
+                document.getElementById('documentsList').innerHTML = '<p>Error loading documents.</p>';
+            }
+        }
+
+        // Ask question
+        async function askQuestion() {
+            const question = document.getElementById('chatInput').value.trim();
+            if (!question) return;
+            
+            const chatResponse = document.getElementById('chatResponse');
+            chatResponse.innerHTML = 'Thinking...';
+            chatResponse.className = 'chat-response show';
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: question,
+                        useRAG: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.answer) {
+                    let responseHtml = `<strong>Answer:</strong><br>${result.answer}`;
+                    
+                    if (result.reasoning) {
+                        responseHtml += `<br><br><strong>Reasoning:</strong><br>${result.reasoning}`;
+                    }
+                    
+                    chatResponse.innerHTML = responseHtml;
+                } else {
+                    chatResponse.innerHTML = 'No answer received.';
+                }
+            } catch (error) {
+                chatResponse.innerHTML = 'Error: ' + error.message;
+            }
+        }
+
+        // Load documents on page load
+        loadDocuments();
+    </script>
+</body>
+</html>
